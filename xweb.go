@@ -15,26 +15,16 @@ import (
 )
 
 const (
-	version = "0.1.2"
+	Version = "0.1.2"
 )
 
-// small optimization: cache the context type instead of repeteadly calling reflect.Typeof
-//var contextType reflect.Type
+const (
+	GET  = "GET"
+	POST = "POST"
+	HEAD = "HEAD"
+)
 
 func init() {
-	//contextType = reflect.TypeOf(Context{})
-	//find the location of the exe file
-	/*wd, _ := os.Getwd()
-	arg0 := path.Clean(os.Args[0])
-	var exeFile string
-	if strings.HasPrefix(arg0, "/") {
-		exeFile = arg0
-	} else {
-		//TODO for robustness, search each directory in $PATH
-		exeFile = path.Join(wd, arg0)
-	}
-	_, _ := path.Split(exeFile)*/
-	return
 }
 
 func Redirect(w http.ResponseWriter, url string) error {
@@ -80,7 +70,7 @@ const (
 func Error(w http.ResponseWriter, status int, content string) error {
 	w.WriteHeader(status)
 	res := fmt.Sprintf(errorTmpl, status, statusText[status],
-		status, statusText[status], content, version)
+		status, statusText[status], content, Version)
 	_, err := w.Write([]byte(res))
 	return err
 }
@@ -121,6 +111,14 @@ func AutoAction(c ...interface{}) {
 
 func AddAction(c ...interface{}) {
 	mainServer.AddAction(c...)
+}
+
+func AddTmplVar(name string, varOrFun interface{}) {
+	mainServer.AddTmplVar(name, varOrFun)
+}
+
+func AddTmplVars(t *T) {
+	mainServer.AddTmplVars(t)
 }
 
 func AddRouter(url string, c interface{}) {

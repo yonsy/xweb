@@ -1,7 +1,6 @@
 package xweb
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"html/template"
@@ -26,7 +25,7 @@ const (
 type App struct {
 	BasePath        string
 	Name            string //[SWH|+]
-	routes          []route
+	routes          *Routes
 	filters         []Filter
 	Server          *Server
 	AppConfig       *AppConfig
@@ -70,6 +69,10 @@ type route struct {
 	ctype   reflect.Type
 }
 
+var (
+	defaultHome = []string{"index.html", "index.htm"}
+)
+
 func NewApp(args ...string) *App {
 	path := args[0]
 	name := ""
@@ -78,7 +81,7 @@ func NewApp(args ...string) *App {
 	} else {
 		name = args[1]
 	}
-	return &App{
+	app := &App{
 		BasePath: path,
 		Name:     name, //[SWH|+]
 		AppConfig: &AppConfig{
@@ -101,6 +104,9 @@ func NewApp(args ...string) *App {
 		StaticVerMgr: new(StaticVerMgr),
 		TemplateMgr:  new(TemplateMgr),
 	}
+
+	app.routes = NewRoutes(app, defaultHome)
+	return app
 }
 
 func (a *App) initApp() {
@@ -164,9 +170,9 @@ func (app *App) AutoAction(cs ...interface{}) {
 }
 
 // @deprected, this function will be deleted in furtuer, please use AddTmplVar instead
-func (app *App) AddFunc(name string, fun interface{}) {
+/*func (app *App) AddFunc(name string, fun interface{}) {
 	app.FuncMaps[name] = fun
-}
+}*/
 
 func (app *App) AddTmplVar(name string, varOrFun interface{}) {
 	if reflect.TypeOf(varOrFun).Kind() == reflect.Func {
@@ -196,13 +202,15 @@ func (app *App) filter(w http.ResponseWriter, req *http.Request) bool {
 }
 
 func (a *App) addRoute(r string, methods map[string]bool, t reflect.Type, handler string) {
-	cr, err := regexp.Compile(r)
+	/*cr, err := regexp.Compile(r)
 	if err != nil {
 		a.Logger.Printf("Error in route regex %q\n", r)
 		return
 	}
 
 	a.routes = append(a.routes, route{r, cr, methods, handler, t})
+	*/
+	a.routes.addAction(r, methods, t, handler)
 }
 
 func (app *App) AddRouter(url string, c interface{}) {
@@ -263,7 +271,8 @@ const (
 
 // the main route handler in web.go
 func (a *App) routeHandler(req *http.Request, w http.ResponseWriter) {
-	requestPath := req.URL.Path
+	a.routes.handle(req, w)
+	/*requestPath := req.URL.Path
 
 	//log the request
 	var logEntry bytes.Buffer
@@ -438,6 +447,7 @@ func (a *App) routeHandler(req *http.Request, w http.ResponseWriter) {
 
 	fmt.Fprintf(&logEntry, "\033[%v;1m%s %s\033[0m", ForeRed, req.Method, requestPath)
 	a.Logger.Print(logEntry.String())
+	*/
 }
 
 func (a *App) StaticUrl(url string) string {

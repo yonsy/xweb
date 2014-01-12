@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -448,6 +449,25 @@ func (a *App) routeHandler(req *http.Request, w http.ResponseWriter) {
 	fmt.Fprintf(&logEntry, "\033[%v;1m%s %s\033[0m", ForeRed, req.Method, requestPath)
 	a.Logger.Print(logEntry.String())
 	*/
+}
+
+func (a *App) Error(w http.ResponseWriter, status int, content string) error {
+	w.WriteHeader(status)
+	if errorTmpl == "" {
+		errTmplFile := a.AppConfig.TemplateDir + "/_error.html"
+		if file, err := os.Stat(errTmplFile); err == nil && !file.IsDir() {
+			if b, e := ioutil.ReadFile(errTmplFile); e == nil {
+				errorTmpl = string(b)
+			}
+		}
+		if errorTmpl == "" {
+			errorTmpl = defaultErrorTmpl
+		}
+	}
+	res := fmt.Sprintf(errorTmpl, status, statusText[status],
+		status, statusText[status], content, Version)
+	_, err := w.Write([]byte(res))
+	return err
 }
 
 func (a *App) StaticUrl(url string) string {

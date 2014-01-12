@@ -1,7 +1,9 @@
 package xweb
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -36,12 +38,12 @@ func (h *staticHandler) Do(w http.ResponseWriter, req *http.Request) error {
 		}
 	}
 
-	if isStaticFileToCompress {
-		finfo, err := os.Stat(staticFile)
-		if err != nil {
-			return err
-		}
+	finfo, err := os.Stat(staticFile)
+	if err != nil {
+		return err
+	}
 
+	if isStaticFileToCompress {
 		if finfo.IsDir() {
 			return errors.New("unsupported serve dir")
 		}
@@ -86,12 +88,6 @@ func (h *actionHandler) DoCr(w http.ResponseWriter, req *http.Request, match []s
 
 	//Set the default content-type
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	/*if !a.filter(w, req) {
-		return
-	}*/
-
-	//requestPath := req.URL.Path
 
 	if a.AppConfig.CheckXrsf && req.Method == "POST" {
 		res, err := req.Cookie(XSRF_TAG)
@@ -231,6 +227,17 @@ func (r *Routes) addAction(s string, methods map[string]bool, ctype reflect.Type
 	return nil
 }
 
+func statusCode(err error) int {
+	switch err.(type) {
+	case *AbortError:
+		return err.(*AbortError).Code
+	}
+	if err == nil {
+		return 200
+	}
+	return 500
+}
+
 func (r *Routes) handle(req *http.Request, w http.ResponseWriter) {
 	var method string
 	method = req.Method
@@ -243,15 +250,51 @@ func (r *Routes) handle(req *http.Request, w http.ResponseWriter) {
 	tm := time.Now().UTC()
 	w.Header().Set("Date", webTime(tm))
 
-	// search for accurate maps
+	var err error
+	var logEntry bytes.Buffer
+	var code = http.StatusOK
 	requestPath := req.URL.Path
+
+	defer func() {
+		var color int = ForeGreen
+		if code != http.StatusOK {
+			color = ForeRed
+		}
+
+		fmt.Fprintf(&logEntry, "\033[%v;1m%s %d %s\033[0m", color, req.Method,
+			code, requestPath)
+		r.app.Logger.Print(logEntry.String())
+	}()
+
+	handler := staticHandler{app: r.app}
+	err = handler.Do(w, req)
+	code = statusCode(err)
+	if err == nil {
+		return
+	}
+
+	// search for accurate maps
 	if handler, ok := r.mapRoutes[requestPath]; ok {
-		handler.Do(w, req)
+		// filter
+		switch handler.(type) {
+		case *actionHandler:
+			if !r.app.filter(w, req) {
+				return
+			}
+		}
+
+		err = handler.Do(w, req)
+		code = statusCode(err)
 		return
 	}
 
 	// range for unaccurate slice
 	for _, handler := range r.rgRoutes {
+		// filter
+		if !r.app.filter(w, req) {
+			return
+		}
+
 		if !handler.cr.MatchString(requestPath) {
 			continue
 		}
@@ -261,7 +304,8 @@ func (r *Routes) handle(req *http.Request, w http.ResponseWriter) {
 			continue
 		}
 
-		handler.DoCr(w, req, match[1:])
+		err = handler.DoCr(w, req, match[1:])
+		code = statusCode(err)
 		return
 	}
 
@@ -269,11 +313,13 @@ func (r *Routes) handle(req *http.Request, w http.ResponseWriter) {
 	for _, page := range r.defaultIndex {
 		idxPath := path.Join(requestPath, page)
 		if handler, ok := r.mapRoutes[idxPath]; ok {
-			handler.Do(w, req)
+			err = handler.Do(w, req)
+			code = statusCode(err)
 			return
 		}
 	}
 
 	// if there is not, then return 404
-	//notFound(req, w)
+	code = http.StatusNotFound
+	Error(w, code, "Not Found")
 }
